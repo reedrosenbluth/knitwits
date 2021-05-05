@@ -3,11 +3,12 @@
 ;; (impl-trait 'ST1JSH2FPE8BWNTP228YZ1AZZ0HE0064PS54Q30F0.nft-trait.nft-trait)
 
 ;; error codes
-(define-constant ERR_NFT_ALREADY_EXISTS    u1)
-(define-constant ERR_AMOUNT_NOT_POSITIVE   u2)
-(define-constant ERR_SENDER_NOT_CALLER     u3)
-(define-constant ERR_NFT_NOT_FOUND         u4)
-(define-constant ERR_OWNER_NOT_CALLER      u5)
+(define-constant ERR_NFT_ALREADY_EXISTS      u1)
+(define-constant ERR_AMOUNT_NOT_POSITIVE     u2)
+(define-constant ERR_SENDER_NOT_CALLER       u3)
+(define-constant ERR_NFT_NOT_FOUND           u4)
+(define-constant ERR_OWNER_NOT_CALLER        u5)
+(define-constant ERR_COULD_NOT_TRANSFER_STX  u6)
 
 ;; constants
 (define-constant INITIAL_PRICE u200000000)
@@ -28,27 +29,34 @@
 
 ;; get a sweater token's metadata URI
 (define-read-only (get-token-uri (id uint))
-  (ok (map-get? metadata { id: id })))
+  (ok (get uri (map-get? metadata { id: id }))))
 
 ;; get a sweater token's owner
 (define-read-only (get-owner (id uint))
   (ok (nft-get-owner? knitwits id)))
 
 ;; mint a new knitwit NFT
-(define-public (mint)
-  (begin
-    (unwrap! (nft-mint? knitwits (var-get knitwit-id) contract-caller) (err ERR_NFT_ALREADY_EXISTS))
+(define-public (mint (maybe-uri (optional (string-ascii 256))))
+  (let ((id (var-get knitwit-id)))
+    (unwrap! (stx-transfer? (price) tx-sender (as-contract tx-sender)) (err ERR_COULD_NOT_TRANSFER_STX))
+    ;; TODO: should the recipient be tx-sender or contract-caller?
+    (unwrap! (nft-mint? knitwits id contract-caller) (err ERR_NFT_ALREADY_EXISTS))
     (var-set num-minted (+ (var-get num-minted) u1))
-    (ok (var-set knitwit-id (+ (var-get knitwit-id) u1)))))
+    (match maybe-uri
+      uri (map-set metadata { id: id } { uri: uri })
+      false)
+    (ok (var-set knitwit-id (+ id u1)))))
 
 (define-public (burn (id uint))
   (let ((owner (unwrap! (nft-get-owner? knitwits id) (err ERR_NFT_NOT_FOUND))))
+    ;; TODO: should this be tx-sender or contract-caller?
     (asserts! (is-eq owner contract-caller) (err ERR_OWNER_NOT_CALLER))
     (nft-burn? knitwits id contract-caller)))
 
 ;; transfer a knitwit from one principal to another
 (define-public (transfer (id uint) (sender principal) (recipient principal))
   (begin
+    ;; TODO: should this be tx-sender or contract-caller?
     (asserts! (is-eq sender contract-caller) (err { kind: "nft-transfer-failed", code: ERR_SENDER_NOT_CALLER}))
     (match (nft-transfer? knitwits id sender recipient)
       success (ok true)

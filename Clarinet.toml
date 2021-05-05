@@ -1,5 +1,6 @@
 [project]
 name = "knitwits"
+
 [contracts.knitwits]
 path = "contracts/knitwits.clar"
 depends_on = []
